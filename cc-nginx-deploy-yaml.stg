@@ -216,7 +216,7 @@ spec:
         - name: RSYNC_AUTHORIZED_KEY
           valueFrom:
             secretKeyRef:
-              name: rsync-<vars.rsync.ssh.revision>
+              name: javadoc-ssh-<vars.javadoc.ssh.revision>
               key: auth-key
         - name: USER
           value: "root"
