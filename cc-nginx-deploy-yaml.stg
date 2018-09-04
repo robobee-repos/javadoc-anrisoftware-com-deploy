@@ -262,7 +262,7 @@ spec:
 
 ---
 
-<ingressService(vars.nginx, "nginx-anrisoftware-com", "nginx", "anrisoftware-com")>
+<ingressService(vars.nginx, "nginx-anrisoftware-com", "nginx", "javadoc.anrisoftware-com")>
 
 ---
 
