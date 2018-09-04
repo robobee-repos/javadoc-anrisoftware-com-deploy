@@ -1,0 +1,29 @@
+/*
+ * Mandatory:
+ *
+ * vars.volume.class
+ * vars.volume.storage
+ *
+ */
+
+/*
+ * 
+ */
+bb-volumes-yaml(parent, vars) ::= <<
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: "javadoc-anrisoftware-com-data"
+  namespace: javadoc-anrisoftware-com
+  labels:
+    group: javadoc
+  annotations:
+    volume.beta.kubernetes.io/storage-class: <vars.volume.class>
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: <vars.volume.storage>
+
+>>

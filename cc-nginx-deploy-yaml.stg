@@ -1,0 +1,253 @@
+/*
+ * Mandatory:
+ *
+ * vars.nginx.storage
+ * vars.nginx.image.name
+ * vars.nginx.image.version
+ * vars.nginx.workerProcesses
+ * vars.nginx.workerConnections
+ * vars.nginx.clientMaxBodySize
+ * vars.nginx.readTimeout
+ * vars.rsync.image.name
+ * vars.rsync.image.version
+ * vars.rsync.ssh.revision
+ * 
+ * Optional:
+ * 
+ * vars.nginx.limits.cpu
+ * vars.nginx.limits.memory
+ * vars.nginx.requests.cpu
+ * vars.nginx.requests.memory
+ * vars.nginx.affinity.key
+ * vars.nginx.affinity.name
+ * vars.nginx.affinity.required
+ * vars.nginx.allowOnMaster
+ * vars.nginx.tolerations[].effect
+ * vars.nginx.tolerations[].key
+ * vars.nginx.tolerations[].value
+ * vars.rsync.limits.cpu
+ * vars.rsync.limits.memory
+ * vars.rsync.requests.cpu
+ * vars.rsync.requests.memory
+ */
+
+import "robobeerun-templates/_affinities.stg"
+import "robobeerun-templates/_nginx_config.stg"
+import "robobeerun-templates/_nginx_probe.stg"
+import "robobeerun-templates/_tolerations.stg"
+import "robobeerun-templates/_resources.stg"
+import "robobeerun-templates/_cert_config.stg"
+import "robobeerun-templates/_ingress_config.stg"
+
+/*
+ *
+ */
+cc-nginx-deploy-yaml(parent, vars) ::= <<
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-nginx-<vars.nginx.revision>
+  namespace: javadoc-anrisoftware-com
+  labels:
+    app: nginx
+    tier: frontend
+    group: javadoc
+data:
+  nginx.conf: |
+    <nginxDefaults(parent, vars, vars.nginx)>
+    http {
+        <nginxHttpDefaults(parent, vars, vars.nginx)>
+        upstream backend {
+            server 127.0.0.1:8000 max_fails=3 fail_timeout=<vars.nginx.readTimeout>;
+        }
+        <nginxVirtualHosts(parent, vars, vars.nginx.hosts)>
+        server {
+            listen 8080;
+            listen [::]:8080;
+            server_name <first(vars.nginx.hosts)>;
+            root /var/www/html;
+            index index.php;
+            <nginxLocationFavicon(parent, vars)>
+            <nginxLocationRobots(parent, vars)>
+            <nginxLocationHidden(parent, vars)>
+            <nginxLocationStaticFiles(parent, vars)>
+        }
+    }
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: javadoc-anrisoftware-com
+  labels:
+    app: nginx
+    tier: frontend
+    group: javadoc
+spec:
+  ports:
+  - name: "http"
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: nginx
+
+---
+
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: javadoc-anrisoftware-com
+  labels:
+    app: nginx
+    tier: frontend
+    group: javadoc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+      tier: frontend
+      group: javadoc
+  template:
+    metadata:
+      labels:
+        app: nginx
+        tier: frontend
+        group: javadoc
+    spec:
+      containers:
+      - image: <vars.nginx.image.name>:<vars.nginx.image.version>
+        name: nginx
+        ports:
+        - containerPort: 8080
+          name: "http"
+        <nginxReadinessProbe(parent, vars, vars.nginx)>
+        <resourcesGroup(parent, vars, vars.nginx)>
+        volumeMounts:
+        - mountPath: "/var/www/html"
+          name: "data"
+          subPath: "nginx_html"
+        - mountPath: "/nginx-in"
+          name: "nginx-config"
+      restartPolicy: Always
+      volumes:
+      - name: "data"
+        persistentVolumeClaim:
+          claimName: "javadoc-anrisoftware-com-data"
+      - name: "nginx-config"
+        configMap:
+          name: "nginx-nginx-<vars.nginx.revision>"
+      <affinitiesGroup(parent, vars, vars.nginx.affinity)>
+      <tolerationMasterGroup(parent, vars, vars.nginx.allowOnMaster)>
+      <tolerationsGroup(parent, vars, vars.nginx.tolerations, vars.nginx.allowOnMaster)>
+
+---
+
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: rsync-nginx
+  namespace: javadoc-anrisoftware-com
+  labels:
+    app: rsync-nginx
+    tier: backup
+    group: javadoc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rsync-nginx
+      tier: backup
+      group: javadoc
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: rsync-nginx
+        tier: backup
+        group: javadoc
+    spec:
+      containers:
+      - image: <vars.rsync.image.name>:<vars.rsync.image.version>
+        name: rsync-nginx
+        env:
+        - name: RSYNC_AUTHORIZED_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rsync-ssh-<vars.rsync.ssh.revision>
+              key: auth-key
+        - name: USER
+          value: "root"
+        ports:
+        - containerPort: 2222
+          name: ssh
+        readinessProbe:
+          exec:
+            command:
+            - /readiness.sh
+            - /data/LICENSE
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        <resourcesGroup(parent, vars, vars.rsync)>
+        volumeMounts:
+        - mountPath: "/data"
+          name: data
+          subPath: nginx_html
+        - mountPath: "/bundle"
+          name: data
+          subPath: nginx_bundle
+        - mountPath: "/data-1"
+          name: data-1
+          subPath: nginx_html
+        - mountPath: "/bundle-1"
+          name: data-1
+          subPath: nginx_bundle
+      restartPolicy: Always
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: "javadoc-anrisoftware-com-data"
+      <affinitiesGroup(parent, vars, vars.nginx.affinity)>
+      <tolerationMasterGroup(parent, vars, vars.nginx.allowOnMaster)>
+      <tolerationsGroup(parent, vars, vars.nginx.tolerations, vars.nginx.allowOnMaster)>
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: javadoc-anrisoftware-com
+  namespace: javadoc-anrisoftware-com
+  labels:
+    app: nginx
+    tier: frontend
+    deployment: nginx
+  annotations:
+    <ingressDefaultAnnotations(vars.nginx)>
+spec:
+  <ingressDefaultSpec(vars.nginx, "nginx-anrisoftware-com")>
+
+---
+
+<ingressService(vars.nginx, "nginx-anrisoftware-com", "nginx", "anrisoftware-com")>
+
+---
+
+apiVersion: certmanager.k8s.io/v1alpha1
+kind: Certificate
+metadata:
+  name: javadoc-anrisoftware-com
+  namespace: javadoc-anrisoftware-com
+spec:
+  <certDefaultSpecProd(vars.nginx, "nginx-anrisoftware-com")>
+
+---
+
+>>
