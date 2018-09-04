@@ -177,7 +177,7 @@ spec:
   ports:
   - name: "ssh"
     port: 2222
-    targetPort: 22
+    targetPort: 2222
     nodePort: 30101
   selector:
     app: javadoc-ssh
