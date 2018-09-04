@@ -1,6 +1,9 @@
 /*
  * Mandatory:
  *
+ * vars.javadoc.ssh.publicKey
+ * vars.javadoc.ssh.revision
+ * vars.javadoc.nginx.revision
  * vars.nginx.storage
  * vars.nginx.image.name
  * vars.nginx.image.version
@@ -10,7 +13,6 @@
  * vars.nginx.readTimeout
  * vars.rsync.image.name
  * vars.rsync.image.version
- * vars.rsync.ssh.revision
  * 
  * Optional:
  * 
@@ -49,7 +51,7 @@ cc-nginx-deploy-yaml(parent, vars) ::= <<
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: nginx-nginx-<vars.nginx.revision>
+  name: javadoc-nginx-<vars.javadoc.nginx.revision>
   namespace: javadoc-anrisoftware-com
   labels:
     app: nginx
@@ -60,22 +62,34 @@ data:
     <nginxDefaults(parent, vars, vars.nginx)>
     http {
         <nginxHttpDefaults(parent, vars, vars.nginx)>
-        upstream backend {
-            server 127.0.0.1:8000 max_fails=3 fail_timeout=<vars.nginx.readTimeout>;
-        }
         <nginxVirtualHosts(parent, vars, vars.nginx.hosts)>
         server {
             listen 8080;
             listen [::]:8080;
             server_name <first(vars.nginx.hosts)>;
             root /var/www/html;
-            index index.php;
+            index index.html index.htm;
             <nginxLocationFavicon(parent, vars)>
             <nginxLocationRobots(parent, vars)>
             <nginxLocationHidden(parent, vars)>
             <nginxLocationStaticFiles(parent, vars)>
         }
     }
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: javadoc-ssh-<vars.javadoc.ssh.revision>
+  namespace: javadoc-anrisoftware-com
+  labels:
+    app: javadoc-ssh
+    tier: backend
+    group: javadoc
+type: Opaque
+data:
+  auth-key: <vars.javadoc.ssh.publicKey;format="base64">
 
 ---
 
@@ -132,7 +146,7 @@ spec:
         volumeMounts:
         - mountPath: "/var/www/html"
           name: "data"
-          subPath: "nginx_html"
+          subPath: "javadoc_public"
         - mountPath: "/nginx-in"
           name: "nginx-config"
       restartPolicy: Always
@@ -142,46 +156,67 @@ spec:
           claimName: "javadoc-anrisoftware-com-data"
       - name: "nginx-config"
         configMap:
-          name: "nginx-nginx-<vars.nginx.revision>"
+          name: "javadoc-nginx-<vars.javadoc.nginx.revision>"
       <affinitiesGroup(parent, vars, vars.nginx.affinity)>
       <tolerationMasterGroup(parent, vars, vars.nginx.allowOnMaster)>
       <tolerationsGroup(parent, vars, vars.nginx.tolerations, vars.nginx.allowOnMaster)>
 
 ---
 
+apiVersion: v1
+kind: Service
+metadata:
+  name: javadoc-ssh
+  namespace: javadoc-anrisoftware-com
+  labels:
+    app: javadoc-ssh
+    tier: backend
+    group: javadoc
+spec:
+  type: NodePort
+  ports:
+  - name: "ssh"
+    port: 2222
+    targetPort: 22
+    nodePort: 30101
+  selector:
+    app: javadoc-ssh
+
+---
+
 apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
-  name: rsync-nginx
+  name: javadoc-ssh
   namespace: javadoc-anrisoftware-com
   labels:
-    app: rsync-nginx
-    tier: backup
+    app: javadoc-ssh
+    tier: backend
     group: javadoc
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: rsync-nginx
-      tier: backup
+      app: javadoc-ssh
+      tier: backend
       group: javadoc
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app: rsync-nginx
-        tier: backup
+        app: javadoc-ssh
+        tier: backend
         group: javadoc
     spec:
       containers:
       - image: <vars.rsync.image.name>:<vars.rsync.image.version>
-        name: rsync-nginx
+        name: rsync
         env:
         - name: RSYNC_AUTHORIZED_KEY
           valueFrom:
             secretKeyRef:
-              name: rsync-ssh-<vars.rsync.ssh.revision>
+              name: rsync-<vars.rsync.ssh.revision>
               key: auth-key
         - name: USER
           value: "root"
@@ -192,23 +227,14 @@ spec:
           exec:
             command:
             - /readiness.sh
-            - /data/LICENSE
+            - /data/index.html
           initialDelaySeconds: 5
           timeoutSeconds: 1
         <resourcesGroup(parent, vars, vars.rsync)>
         volumeMounts:
         - mountPath: "/data"
-          name: data
-          subPath: nginx_html
-        - mountPath: "/bundle"
-          name: data
-          subPath: nginx_bundle
-        - mountPath: "/data-1"
-          name: data-1
-          subPath: nginx_html
-        - mountPath: "/bundle-1"
-          name: data-1
-          subPath: nginx_bundle
+          name: "data"
+          subPath: "javadoc_public"
       restartPolicy: Always
       volumes:
       - name: data
