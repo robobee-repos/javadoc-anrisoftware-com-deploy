@@ -2,44 +2,47 @@
  * Mandatory:
  *
  * vars.javadoc.ssh.publicKey
- * vars.javadoc.ssh.revision
- * vars.javadoc.nginx.revision
- * vars.nginx.storage
+ * vars.javadoc.revision
+ * vars.javadoc.hosts
+ * vars.javadoc.storage.name
+ * 
  * vars.nginx.image.name
  * vars.nginx.image.version
- * vars.nginx.workerProcesses
- * vars.nginx.workerConnections
- * vars.nginx.clientMaxBodySize
- * vars.nginx.readTimeout
+ * 
  * vars.rsync.image.name
  * vars.rsync.image.version
  * 
  * Optional:
  * 
+ * vars.javadoc.affinity.key
+ * vars.javadoc.affinity.name
+ * vars.javadoc.affinity.required
+ * vars.javadoc.allowOnMaster
+ * vars.javadoc.tolerations[].effect
+ * vars.javadoc.tolerations[].key
+ * vars.javadoc.tolerations[].value
+ * 
  * vars.nginx.limits.cpu
  * vars.nginx.limits.memory
  * vars.nginx.requests.cpu
  * vars.nginx.requests.memory
- * vars.nginx.affinity.key
- * vars.nginx.affinity.name
- * vars.nginx.affinity.required
- * vars.nginx.allowOnMaster
- * vars.nginx.tolerations[].effect
- * vars.nginx.tolerations[].key
- * vars.nginx.tolerations[].value
+ * 
+ * vars.nginx.workerProcesses
+ * vars.nginx.workerConnections
+ * vars.nginx.clientMaxBodySize
+ * vars.nginx.readTimeout
+ * 
  * vars.rsync.limits.cpu
  * vars.rsync.limits.memory
  * vars.rsync.requests.cpu
  * vars.rsync.requests.memory
  */
 
-import "robobeerun-templates/_affinities.stg"
-import "robobeerun-templates/_nginx_config.stg"
-import "robobeerun-templates/_nginx_probe.stg"
-import "robobeerun-templates/_tolerations.stg"
-import "robobeerun-templates/_resources.stg"
-import "robobeerun-templates/_cert_config.stg"
-import "robobeerun-templates/_ingress_config.stg"
+import "robobeerun-templates/affinities.stg"
+import "robobeerun-templates/nginx_config.stg"
+import "robobeerun-templates/nginx_probe.stg"
+import "robobeerun-templates/tolerations.stg"
+import "robobeerun-templates/resources.stg"
 
 /*
  *
@@ -51,28 +54,21 @@ cc-nginx-deploy-yaml(parent, vars) ::= <<
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: javadoc-nginx-<vars.javadoc.nginx.revision>
+  name: nginx-config-<vars.javadoc.revision>
   namespace: javadoc-anrisoftware-com
-  labels:
-    app: nginx
-    tier: frontend
-    group: javadoc
 data:
   nginx.conf: |
-    <nginxDefaults(parent, vars, vars.nginx)>
+    <nginxDefaults(vars.nginx)>
     http {
-        <nginxHttpDefaults(parent, vars, vars.nginx)>
-        <nginxVirtualHosts(parent, vars, vars.nginx.hosts)>
+        <nginxHttpDefaults(vars.nginx)>
+        <nginxVirtualHosts(vars.javadoc.hosts)>
         server {
             listen 8080;
             listen [::]:8080;
-            server_name <first(vars.nginx.hosts)>;
+            server_name <first(vars.javadoc.hosts)>;
             root /var/www/html;
             index index.html index.htm;
-            <nginxLocationFavicon(parent, vars)>
-            <nginxLocationRobots(parent, vars)>
-            <nginxLocationHidden(parent, vars)>
-            <nginxLocationStaticFiles(parent, vars)>
+            <nginxDefaultLocations()>
         }
     }
 
@@ -81,12 +77,8 @@ data:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: javadoc-ssh-<vars.javadoc.ssh.revision>
+  name: ssh-<vars.javadoc.revision>
   namespace: javadoc-anrisoftware-com
-  labels:
-    app: javadoc-ssh
-    tier: backend
-    group: javadoc
 type: Opaque
 data:
   auth-key: <vars.javadoc.ssh.publicKey;format="base64">
@@ -96,82 +88,23 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx
+  name: javadoc
   namespace: javadoc-anrisoftware-com
-  labels:
-    app: nginx
-    tier: frontend
-    group: javadoc
 spec:
   ports:
   - name: "http"
     port: 8080
     targetPort: 8080
   selector:
-    app: nginx
-
----
-
-apiVersion: apps/v1beta2
-kind: Deployment
-metadata:
-  name: nginx
-  namespace: javadoc-anrisoftware-com
-  labels:
-    app: nginx
-    tier: frontend
-    group: javadoc
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: nginx
-      tier: frontend
-      group: javadoc
-  template:
-    metadata:
-      labels:
-        app: nginx
-        tier: frontend
-        group: javadoc
-    spec:
-      containers:
-      - image: <vars.nginx.image.name>:<vars.nginx.image.version>
-        name: nginx
-        ports:
-        - containerPort: 8080
-          name: "http"
-        <nginxReadinessProbe(parent, vars, vars.nginx)>
-        <resourcesGroup(parent, vars, vars.nginx)>
-        volumeMounts:
-        - mountPath: "/var/www/html"
-          name: "data"
-          subPath: "javadoc_public"
-        - mountPath: "/nginx-in"
-          name: "nginx-config"
-      restartPolicy: Always
-      volumes:
-      - name: "data"
-        persistentVolumeClaim:
-          claimName: "javadoc-anrisoftware-com-data"
-      - name: "nginx-config"
-        configMap:
-          name: "javadoc-nginx-<vars.javadoc.nginx.revision>"
-      <affinitiesGroup(parent, vars, vars.nginx.affinity)>
-      <tolerationMasterGroup(parent, vars, vars.nginx.allowOnMaster)>
-      <tolerationsGroup(parent, vars, vars.nginx.tolerations, vars.nginx.allowOnMaster)>
+    app: javadoc
 
 ---
 
 apiVersion: v1
 kind: Service
 metadata:
-  name: javadoc-ssh
+  name: ssh
   namespace: javadoc-anrisoftware-com
-  labels:
-    app: javadoc-ssh
-    tier: backend
-    group: javadoc
 spec:
   type: NodePort
   ports:
@@ -180,43 +113,48 @@ spec:
     targetPort: 2222
     nodePort: 30101
   selector:
-    app: javadoc-ssh
+    app: javadoc
 
 ---
 
 apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
-  name: javadoc-ssh
+  name: javadoc
   namespace: javadoc-anrisoftware-com
   labels:
-    app: javadoc-ssh
-    tier: backend
-    group: javadoc
+    app: javadoc
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: javadoc-ssh
-      tier: backend
-      group: javadoc
-  strategy:
-    type: Recreate
+      app: javadoc
   template:
     metadata:
       labels:
-        app: javadoc-ssh
-        tier: backend
-        group: javadoc
+        app: javadoc
     spec:
       containers:
+      - image: <vars.nginx.image.name>:<vars.nginx.image.version>
+        name: nginx
+        ports:
+        - containerPort: 8080
+          name: "http"
+        <nginxReadinessProbe(vars.nginx)>
+        <resourcesGroup(vars.nginx)>
+        volumeMounts:
+        - mountPath: "/var/www/html"
+          name: "data"
+          subPath: "javadoc_public"
+        - mountPath: "/nginx-in"
+          name: "nginx-config"
       - image: <vars.rsync.image.name>:<vars.rsync.image.version>
         name: rsync
         env:
         - name: RSYNC_AUTHORIZED_KEY
           valueFrom:
             secretKeyRef:
-              name: javadoc-ssh-<vars.javadoc.ssh.revision>
+              name: ssh-<vars.javadoc.revision>
               key: auth-key
         - name: USER
           value: "root"
@@ -230,50 +168,22 @@ spec:
             - /data/index.html
           initialDelaySeconds: 5
           timeoutSeconds: 1
-        <resourcesGroup(parent, vars, vars.rsync)>
+        <resourcesGroup(vars.rsync)>
         volumeMounts:
         - mountPath: "/data"
           name: "data"
           subPath: "javadoc_public"
       restartPolicy: Always
       volumes:
-      - name: data
+      - name: "data"
         persistentVolumeClaim:
-          claimName: "javadoc-anrisoftware-com-data"
-      <affinitiesGroup(parent, vars, vars.nginx.affinity)>
-      <tolerationMasterGroup(parent, vars, vars.nginx.allowOnMaster)>
-      <tolerationsGroup(parent, vars, vars.nginx.tolerations, vars.nginx.allowOnMaster)>
+          claimName: "<vars.javadoc.storage.name>"
+      - name: "nginx-config"
+        configMap:
+          name: "nginx-config-<vars.javadoc.revision>"
+      <affinitiesGroup(vars.javadoc.affinity)>
+      <tolerationMasterGroup(vars.javadoc.allowOnMaster)>
+      <tolerationsGroup(vars.javadoc.tolerations, vars.javadoc.allowOnMaster)>
 
 ---
-
-apiVersion: extensions/v1beta1
-kind: Ingress
-metadata:
-  name: javadoc-anrisoftware-com
-  namespace: javadoc-anrisoftware-com
-  labels:
-    app: nginx
-    tier: frontend
-    deployment: nginx
-  annotations:
-    <ingressDefaultAnnotations(vars.nginx)>
-spec:
-  <ingressDefaultSpec(vars.nginx, "nginx-anrisoftware-com")>
-
----
-
-<ingressService(vars.nginx, "nginx-anrisoftware-com", "nginx", "javadoc-anrisoftware-com")>
-
----
-
-apiVersion: certmanager.k8s.io/v1alpha1
-kind: Certificate
-metadata:
-  name: javadoc-anrisoftware-com
-  namespace: javadoc-anrisoftware-com
-spec:
-  <certDefaultSpecProd(vars.nginx, "nginx-anrisoftware-com")>
-
----
-
 >>

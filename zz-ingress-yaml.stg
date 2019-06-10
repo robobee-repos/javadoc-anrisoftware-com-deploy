@@ -1,0 +1,48 @@
+/*
+ * Mandatory:
+ *
+ * vars.javadoc.hosts
+ * 
+ * Optional:
+ * 
+ * vars.nginx.port
+ * vars.nginx.clientMaxBodySize
+ */
+
+import "robobeerun-templates/cert_config.stg"
+import "robobeerun-templates/ingress_config.stg"
+
+/*
+ *
+ */
+zz-ingress-yaml(parent, vars) ::= <<
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: javadoc-anrisoftware-com
+  namespace: javadoc-anrisoftware-com
+  annotations:
+    <ingressDefaultAnnotations(vars.nginx)>
+spec:
+  <ingressDefaultSpec("nginx-anrisoftware-com", vars.javadoc.hosts)>
+
+---
+
+<ingressService("nginx-anrisoftware-com", "javadoc", "javadoc-anrisoftware-com", vars.nginx)>
+
+---
+
+apiVersion: certmanager.k8s.io/v1alpha1
+kind: Certificate
+metadata:
+  name: javadoc-anrisoftware-com
+  namespace: javadoc-anrisoftware-com
+spec:
+  <certDefaultSpecProd("nginx-anrisoftware-com", vars.javadoc.hosts, vars.javadoc.issuer)>
+
+---
+
+>>
