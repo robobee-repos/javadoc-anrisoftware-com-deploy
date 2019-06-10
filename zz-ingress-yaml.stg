@@ -41,7 +41,7 @@ metadata:
   name: javadoc-anrisoftware-com
   namespace: javadoc-anrisoftware-com
 spec:
-  <certDefaultSpecProd("nginx-anrisoftware-com", vars.javadoc.hosts, vars.javadoc.issuer)>
+  <certDefaultSpec("nginx-anrisoftware-com", vars.javadoc.hosts, vars.javadoc.issuer)>
 
 ---
 
