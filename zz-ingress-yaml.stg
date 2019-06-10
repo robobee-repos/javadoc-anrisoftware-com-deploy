@@ -27,11 +27,11 @@ metadata:
   annotations:
     <ingressDefaultAnnotations(vars.nginx)>
 spec:
-  <ingressDefaultSpec("nginx-anrisoftware-com", vars.javadoc.hosts)>
+  <ingressDefaultSpec("javadoc-anrisoftware-com", vars.javadoc.hosts)>
 
 ---
 
-<ingressService("nginx-anrisoftware-com", "javadoc", "javadoc-anrisoftware-com", vars.nginx)>
+<ingressService("javadoc-anrisoftware-com", "javadoc", "javadoc-anrisoftware-com", vars.nginx)>
 
 ---
 
@@ -41,7 +41,7 @@ metadata:
   name: javadoc-anrisoftware-com
   namespace: javadoc-anrisoftware-com
 spec:
-  <certDefaultSpec("nginx-anrisoftware-com-tls", vars.javadoc.hosts, vars.javadoc.issuer)>
+  <certDefaultSpec("javadoc-anrisoftware-com-tls", vars.javadoc.hosts, vars.javadoc.issuer)>
 
 ---
 
