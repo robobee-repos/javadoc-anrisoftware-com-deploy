@@ -5,6 +5,7 @@
  * vars.javadoc.revision
  * vars.javadoc.hosts
  * vars.javadoc.storage.name
+ * vars.javadoc.indexHtml
  * 
  * vars.nginx.image.name
  * vars.nginx.image.version
@@ -72,6 +73,16 @@ data:
         }
     }
 
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: index-html-<vars.javadoc.revision>
+  namespace: javadoc-anrisoftware-com
+data:
+  index.html: |
+    <vars.javadoc.indexHtml>
 ---
 
 apiVersion: v1
@@ -148,6 +159,9 @@ spec:
           subPath: "javadoc_public"
         - mountPath: "/nginx-in"
           name: "nginx-config"
+        - mountPath: "/var/www/html/index.html"
+          name: "index-html"
+          subPath: "index.html"
       - image: <vars.rsync.image.name>:<vars.rsync.image.version>
         name: rsync
         env:
@@ -181,6 +195,9 @@ spec:
       - name: "nginx-config"
         configMap:
           name: "nginx-config-<vars.javadoc.revision>"
+      - name: "index-html"
+        configMap:
+          name: "index-html-<vars.javadoc.revision>"
       <affinitiesGroup(vars.javadoc.affinity)>
       <tolerationMasterGroup(vars.javadoc.allowOnMaster)>
       <tolerationsGroup(vars.javadoc.tolerations, vars.javadoc.allowOnMaster)>
